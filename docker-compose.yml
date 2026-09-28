@@ -1,0 +1,78 @@
+# Invoice Ninja — Portainer stack
+# Images are built by GitHub Actions (.github/workflows/build.yml) and pulled
+# from GHCR; nothing is compiled on the server.
+# All settings come from Portainer's environment variables (stack.env).
+
+services:
+  app:
+    image: ghcr.io/${GHCR_OWNER}/invoiceninja-app:${TAG:-latest}
+    pull_policy: always
+    restart: unless-stopped
+    env_file:
+      - stack.env
+    volumes:
+      - app_public:/var/www/html/public
+      - app_storage:/var/www/html/storage
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - internal
+
+  nginx:
+    image: ghcr.io/${GHCR_OWNER}/invoiceninja-nginx:${TAG:-latest}
+    pull_policy: always
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-8013}:80"
+    volumes:
+      - app_public:/var/www/html/public:ro
+      - app_storage:/var/www/html/storage:ro
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      - internal
+
+  mysql:
+    image: mysql:8
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE}
+      MYSQL_USER: ${DB_USERNAME}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u$$MYSQL_USER -p$$MYSQL_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - internal
+
+  redis:
+    image: redis:alpine
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - internal
+
+networks:
+  internal:
+
+volumes:
+  app_public:
+  app_storage:
+  mysql_data:
+  redis_data:
